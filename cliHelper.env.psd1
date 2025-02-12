@@ -11,7 +11,7 @@
   ModuleVersion         = '<ModuleVersion>'
   GUID                  = '5b2d0876-9a8b-4aa5-bd54-ce47c534642e'
   Author                = 'alain'
-  CompanyName           = 'alainQtec'
+  CompanyName           = 'chadnpc'
   Copyright             = "Alain Herve (c) <Year>. All rights reserved."
   Description           = 'A module for loading and editing environment variables. It also includes cmdlets for extra safety measures.'
   PowerShellVersion     = '3.0'
@@ -53,7 +53,7 @@
       # Tags applied to this module. These help with module discovery in online galleries.
       Tags         = 'dotEnv', 'PowerShell'
       LicenseUri   = 'https://alain.mit-license.org/'
-      ProjectUri   = 'https://github.com/alainQtec/cliHelper.env'
+      ProjectUri   = 'https://github.com/chadnpc/cliHelper.env'
       # IconUri = ''
       ReleaseNotes = "
 <ReleaseNotes>

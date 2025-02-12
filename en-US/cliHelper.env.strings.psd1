@@ -1,13 +1,13 @@
 ﻿@{
   ModuleName    = 'cliHelper.env'
-  ModuleVersion = [Version]'0.1.2'
+  ModuleVersion = [Version]'0.1.3'
   ReleaseNotes  = @"
 # Changelog`n`n
 
 - Updated build script
 
 `n`n***`n`n# Install guide:`n`n
-1. [Click here](https://github.com/alainQtec/cliHelper.env/releases/download/v<versionToDeploy>/cliHelper.env.zip) to download the *cliHelper.env.zip* file attached to the release.
+1. [Click here](https://github.com/chadnpc/cliHelper.env/releases/download/v<versionToDeploy>/cliHelper.env.zip) to download the *cliHelper.env.zip* file attached to the release.
 2. **If on Windows**: Right-click the downloaded zip, select Properties, then unblock the file.
     > _This is to prevent having to unblock each file individually after unzipping._
 3. Unzip the archive.
