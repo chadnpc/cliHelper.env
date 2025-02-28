@@ -161,6 +161,7 @@ class cert {
   [string]$KeepLocal = $false
   [string]$Pfx
 }
+
 class ProjectConfig : EnvCfg {
   [string]$Name
   [string]$publicKey = ""
@@ -414,16 +415,34 @@ class dotEnv {
       [dotEnv]::Config.Set("Persisted", $p)
     }
   }
-  static [string] sensor([string]$str) {
+  static [string] Sensor([string]$str) {
     if ([string]::IsNullOrWhiteSpace($str)) { return $str }
-    $_90 = [int][Math]::Floor($str.Length * .9)
-    $_10 = [int][Math]::Floor($str.Length * .1)
-    $_sr = ($str.Substring(0, $_10) + '░' * $_90)
-    $_cs = "CENSORED"; if ($_sr.Length -gt 13) {
-      $50l = [int][Math]::Floor($_sr.Length * .5)
-      $_sr = $_sr.Substring(0, $50l - $_cs.Length) + $_cs + $_sr.Substring($50l + $_cs.Length)
+
+    # Calculate preserved and censored portions
+    $preservedLength = [int][Math]::Max(1, [Math]::Floor($str.Length * 0.1))
+    $censoredLength = $str.Length - $preservedLength
+
+    # Create the initial censored string
+    $preservedPart = $str.Substring(0, $preservedLength)
+    $censoredPart = "░" * $censoredLength
+    $censoredString = $preservedPart + $censoredPart
+    $censoredMarker = "CENSORED"
+    if ($censoredString.Length -gt 13) {
+      $midPoint = [int][Math]::Floor($censoredString.Length * 0.5)
+      $markerStartPos = [int][Math]::Max(0, $midPoint - [int][Math]::Floor($censoredMarker.Length / 2))
+
+      # Ensure we don't go out of bounds
+      $prefixEndPos = [int][Math]::Min($markerStartPos, $censoredString.Length)
+      $prefix = $censoredString.Substring(0, $prefixEndPos)
+
+      $suffixStartPos = [int][Math]::Min($markerStartPos + $censoredMarker.Length, $censoredString.Length)
+      $suffix = ""
+      if ($suffixStartPos -lt $censoredString.Length) {
+        $suffix = $censoredString.Substring($suffixStartPos)
+      }
+      $censoredString = $prefix + $censoredMarker + $suffix
     }
-    return $_sr
+    return $censoredString
   }
   static [void] SetEnvFile() {
     [dotEnv].PsObject.properties.add([psscriptproperty]::new('EnvFile', { return [IO.Path]::Combine($(Get-Variable executionContext -ValueOnly).SessionState.Path.CurrentLocation.Path, '.env') }))
@@ -625,7 +644,7 @@ class dotEnv {
 #region typeAccelerators
 # Types that will be available to users when they import the module.
 $typestoExport = @(
-  [dotEnv]
+  [dotEnv], [dotEntry]
 )
 $TypeAcceleratorsClass = [PsObject].Assembly.GetType('System.Management.Automation.TypeAccelerators')
 foreach ($Type in $typestoExport) {
@@ -634,13 +653,7 @@ foreach ($Type in $typestoExport) {
       "Unable to register type accelerator '$($Type.FullName)'"
       'Accelerator already exists.'
     ) -join ' - '
-
-    [System.Management.Automation.ErrorRecord]::new(
-      [System.InvalidOperationException]::new($Message),
-      'TypeAcceleratorAlreadyExists',
-      [System.Management.Automation.ErrorCategory]::InvalidOperation,
-      $Type.FullName
-    ) | Write-Warning
+    "TypeAcceleratorAlreadyExists $Message" | Write-Debug
   }
 }
 # Add type accelerators for every exportable type.

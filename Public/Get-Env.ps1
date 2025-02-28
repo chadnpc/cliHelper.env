@@ -25,6 +25,8 @@
   #     ELM_DISPLAY                wl
   #     WAYLAND_DISPLAY            wayland-1
   #   Reads all env variables from Process scope and only returns those with DISPLAY in their name
+  # .EXAMPLE
+  #   Get-Env -File (Get-EnvFile).FullName
   # .LINK
   #   https://github.com/chadnpc/cliHelper.env/Public/Get-Env.ps1
   [CmdletBinding(DefaultParameterSetName = 'session')]
@@ -34,9 +36,16 @@
     [ValidateNotNullOrWhiteSpace()]
     [string]$Name = "*",
 
-    [Parameter(Mandatory = $true, Position = 1, ParameterSetName = 'file')]
-    [ValidateNotNullOrEmpty()]
-    [string]$source,
+    [Parameter(Mandatory = $false, Position = 1, ParameterSetName = 'file')]
+    [ValidateScript({
+        if (![IO.File]::Exists(($_ | xcrypt GetUnResolvedPath))) {
+          throw [System.IO.FileNotFoundException]::new("Please path to existing file", $_)
+        } else {
+          $true
+        }
+      }
+    )][Alias('File')]
+    [string]$Path,
 
     [Parameter(Mandatory = $false, Position = 1, ParameterSetName = 'session')]
     [System.EnvironmentVariableTarget]$Scope = 'Process',
@@ -50,40 +59,20 @@
 
   begin {
     $PsCmdlet.MyInvocation.BoundParameters.GetEnumerator() | ForEach-Object { Set-Variable -Name $_.Key -Value $_.Value -ea 'SilentlyContinue' }
-    if (!$source -and $Force.IsPresent) { $source = (Get-EnvFile).FullName }
-    $results = @()
+    $results = @(); $File = [IO.FileInfo]::new(($Path | xcrypt GetUnResolvedPath))
   }
 
   Process {
     $fromFile = $PSCmdlet.ParameterSetName -eq "file"
-    $vars = $(if ($fromFile) {
-        $isp = [dotEnv]::IsPersisted(((Resolve-Path $source -ea Ignore).Path))
-        $inc = [IO.File]::Exists([dotEnv]::Config.fallBack)
-        if (($inc -and !$isp) -or ($isp -and $Force)) {
-          [dotEnv]::Read($source)
-        } else {
-          [dotEnv]::vars.Process
+    $vars = $fromFile ? (Get-Enties $File) : (Get-Enties)
+    if ($PSBoundParameters.ContainsKey('scope')) { $vars = $vars.$scope }
+    if ($Persist -and $fromFile) {
+      if (![dotEnv]::IsPersisted($File.FullName) -or $Force) {
+        [dotEnv]::Persist($File.FullName);
+        if ($vars.count -gt 0) {
+          Set-Env -Entries $vars
         }
-      } else {
-        [dotEnv]::vars
       }
-    )
-    if (!$fromFile) {
-      $vars = $(if ($PSBoundParameters.ContainsKey('scope')) {
-          $vars.$scope
-        } else {
-          [enum]::GetNames([EnvironmentVariableTarget]).ForEach({ $vars.$_ })
-        }
-      )
-    }
-    if (!$fromFile -and $Force.IsPresent) {
-      $nvars = [dotEnv]::Read($source)
-      if ($nvars.count -gt 0) {
-        $vars += $nvars; Set-Env -Entries $nvars;
-      }
-    }
-    if ($Persist -and ![dotEnv]::IsPersisted($source)) {
-      Set-Env -Entries $vars; [dotEnv]::Persist($source);
     }
     $results = $(if ($Name.Contains('*')) {
         $vars.Where({ $_.Name -like $Name })
@@ -100,7 +89,7 @@
         [dotEnv]::Config.Set("fallBack", (Get-EnvFile).FullName)
         $results = Get-Env -Name $Name -Scope $Scope
       } else {
-        $results = Get-Env -Name $Name -Source ([dotEnv]::Config.fallBack) -Persist
+        $results = Get-Env -Name $Name -source ([dotEnv]::Config.fallBack) -Persist
         [dotEnv]::Config.Remove("fallback")
       }
     }

@@ -7,13 +7,28 @@
   #   Read-Env ./.env
   # .EXAMPLE
   #   Read-Env | Set-Env
-  [CmdletBinding(DefaultParameterSetName = "path")]
+  [CmdletBinding(DefaultParameterSetName = "path")][OutputType([dotEntry[]])]
   param (
     [Parameter(Mandatory = $false, Position = 0, ParameterSetName = 'path')]
-    [ValidateNotNullOrEmpty()]
+    [ValidateScript({
+        if (![IO.File]::Exists(($_ | xcrypt GetUnResolvedPath))) {
+          throw [System.IO.FileNotFoundException]::new("Please path to existing file", $_)
+        } else {
+          $true
+        }
+      }
+    )]
     [string]$Path = [dotenv].EnvFile,
+
     [Parameter(Mandatory = $false, Position = 0, ParameterSetName = 'file')]
-    [ValidateNotNullOrEmpty()]
+    [ValidateScript({
+        if (!$_.Exists) {
+          throw [System.IO.FileNotFoundException]::new("Please provide a valid file path.", $_)
+        } else {
+          $true
+        }
+      }
+    )]
     [IO.FileInfo]$File = [IO.FileInfo][dotenv].EnvFile
   )
   end {

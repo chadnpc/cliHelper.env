@@ -3,24 +3,22 @@ function Get-EnvFile {
   #   gets .env Path
   # .EXAMPLE
   #   Get-EnvFile
+  # .EXAMPLE
+  #   Get-EnvFile .env
   [OutputType([System.IO.FileInfo])]
   param (
     [Parameter(Position = 0, Mandatory = $false, ValueFromPipeline = $true)]
     [string]$Path
   )
   process {
-    if ($null -eq [dotenv].EnvFile) {
-      [dotenv]::SetEnvFile()
-    }
     if ([string]::IsNullOrWhiteSpace($Path)) {
+      if ($null -eq [dotenv].EnvFile) { [dotenv]::SetEnvFile() }
       $Path = [dotenv].EnvFile
     }
-    $p = Get-Item $Path -Force -ErrorAction Ignore
+    $p = Get-Item ($Path | xcrypt GetUnResolvedPath) -Force -ea Ignore
     if (!$p.Exists) {
       Write-Error "File not found: $Path"
     }
-  }
-  end {
-    return $Path -as [System.IO.FileInfo]
+    return $p -as [System.IO.FileInfo]
   }
 }

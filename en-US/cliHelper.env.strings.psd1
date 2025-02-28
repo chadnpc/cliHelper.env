@@ -1,10 +1,10 @@
 ﻿@{
   ModuleName    = 'cliHelper.env'
-  ModuleVersion = [Version]'0.1.3'
+  ModuleVersion = [Version]'0.1.4'
   ReleaseNotes  = @"
 # Changelog`n`n
 
-- Updated build script
+- Optimised Sensor method in main class
 
 `n`n***`n`n# Install guide:`n`n
 1. [Click here](https://github.com/chadnpc/cliHelper.env/releases/download/v<versionToDeploy>/cliHelper.env.zip) to download the *cliHelper.env.zip* file attached to the release.
