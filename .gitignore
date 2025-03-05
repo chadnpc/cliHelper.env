@@ -405,3 +405,5 @@ Tests/Resources/Test-GitHubScript.ps1
 # others
 .r.tmp/
 /preBuild.ps1
+Pipfile
+Pipfile.lock
