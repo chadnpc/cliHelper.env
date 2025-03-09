@@ -1,5 +1,6 @@
 #!/usr/bin/env pwsh
 using namespace System.IO
+using namespace Microsoft.Win32
 using namespace System.Management.Automation.Language
 
 #Requires -Modules clihelper.xcrypt
@@ -211,23 +212,9 @@ class vars {
   }
   [void] Refresh() {
     [System.Management.Automation.ActionPreference]$DbP2 = $(Get-Variable DebugPreference -ValueOnly);
-    $DebugPreference = 'SilentlyContinue' # turn off debug for a while. (prevents spiting out all the C# code)
+    Set-Variable DebugPreference -Scope Global -Value 'SilentlyContinue' # turn off debug for a while. (prevents spiting out all the C# code)
     try {
-      if ([xcrypt]::Get_Host_Os() -eq "Windows") {
-        $IsnmLoaded = [bool]("win32.nativemethods" -as [type])
-        $IswxLoaded = [bool]("Win32API.Explorer" -as [type])
-        if (!$IsnmLoaded -or !$IswxLoaded) { Write-Verbose "🔵 ⏳ Loading required namespaces ..."; [Console]::WriteLine() }
-        if (!$IsnmLoaded) {
-          Add-Type -Namespace Win32 -Name NativeMethods -MemberDefinition '[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);'
-        }
-        if (!$IswxLoaded) {
-          Add-Type 'using System; using System.Runtime.InteropServices; namespace Win32API { public class Explorer { private static readonly IntPtr HWND_BROADCAST = new IntPtr (0xffff); private static readonly IntPtr HWND_KEYBOARD = new IntPtr (65535); private static readonly UIntPtr WM_USER = new UIntPtr (41504); private const Int32 WM_SETTINGCHANGE = 0x1a; private const Int32 SMTO_ABORTIFHUNG = 0x0002; private const Int32 VK_F5 = 273; [DllImport ("shell32.dll", CharSet = CharSet.Auto, SetLastError = false)] private static extern Int32 SHChangeNotify (Int32 eventId, Int32 flags, IntPtr item1, IntPtr item2); [DllImport ("user32.dll", CharSet = CharSet.Auto, SetLastError = false)] private static extern IntPtr SendMessageTimeout (IntPtr hWnd, Int32 Msg, IntPtr wParam, String lParam, Int32 fuFlags, Int32 uTimeout, IntPtr lpdwResult); [DllImport ("user32.dll", CharSet = CharSet.Auto, SetLastError = false)] static extern bool SendNotifyMessage (IntPtr hWnd, UInt32 Msg, IntPtr wParam, String lParam); [DllImport ("user32.dll", CharSet = CharSet.Auto, SetLastError = false)] private static extern Int32 PostMessage (IntPtr hWnd, UInt32 Msg, UIntPtr wParam, IntPtr lParam); public static void RefreshEnvironment () { SHChangeNotify (0x8000000, 0x1000, IntPtr.Zero, IntPtr.Zero); SendMessageTimeout (HWND_BROADCAST, WM_SETTINGCHANGE, IntPtr.Zero, "Environment", SMTO_ABORTIFHUNG, 100, IntPtr.Zero); SendNotifyMessage (HWND_BROADCAST, WM_SETTINGCHANGE, IntPtr.Zero, "TraySettings"); } public static void RefreshShell () { PostMessage (HWND_KEYBOARD, VK_F5, WM_USER, IntPtr.Zero);}}}'
-        } # Tiddy and updated version lives here: https://gist.github.com/chadnpc/e75089c849ccf5b02d0d1cfa6618fc3a/raw/2cdac0da416ea9f25a2e273d445c6a2d725bc6b7/Win32API.Explorer.cs
-        # Refresh all objects using Win32API. ie: sometimes explorer.exe just doesn't get the message that things were updated.
-        # RefreshEnvironment, RefreshShell and Notify all windows of environment block change
-        [scriptblock]::Create("[Win32API.Explorer]::RefreshEnvironment(); [Win32API.Explorer]::RefreshShell()").Invoke()
-        [scriptblock]::Create("`$HWND_BROADCAST = [intptr]0xffff; `$WM_SETTINGCHANGE = 0x1a; `$result = [uintptr]::zero; [void][win32.nativemethods]::SendMessageTimeout(`$HWND_BROADCAST, `$WM_SETTINGCHANGE, [uintptr]::Zero, 'Environment', 2, 5000, [ref]`$result)").Invoke()
-      }
+      Publish-Env
       foreach ($target in [vars]::targets) {
         Write-Verbose "🔵 [Refresh]  Updating variables in [$target] scope..."
         $currentVars = $this.$target
@@ -236,8 +223,8 @@ class vars {
           $value = $currentVars[$key];
           # TODO: Add a progressbar
           switch ($true) {
-            ($key -eq 'Path') { [Environment]::SetEnvironmentVariable($key, [string]::Join($this.p, $this.getAllValues($key)), $target); break }
-            ($key -eq "PSModulePath" -and [xcrypt]::Get_Host_Os() -eq "Windows") {
+            $($key -eq 'Path') { [Environment]::SetEnvironmentVariable($key, [string]::Join($this.p, $this.getAllValues($key)), $target); break }
+            $($key -eq "PSModulePath") {
               $psm = @(); if ($(Get-Variable PSVersionTable -ValueOnly).psversion -ge [System.Version]("4.0.0.0")) {
                 $psm += [System.IO.Path]::Combine(${env:ProgramFiles}, 'WindowsPowerShell', 'Modules')
               }
@@ -264,25 +251,23 @@ class vars {
       $Env:PATH = $paths -join $this.p
       throw $_.Exception
     } finally {
-      $DebugPreference = $DbP2; $this.cleanUp()
-    }
-  }
-  hidden [void] cleanUp() {
-    [int]$c = 0; [int]$t = $this::targets.Count; [Console]::WriteLine()
-    foreach ($target in [vars]::targets) {
-      Write-Verbose "🔵 [Refresh]  $c/$t Cleanning obsolete variables in [$target] scope ..."
-      $obsoletes = $this.$target.Keys.Where({ $this.ToString() -notcontains $_ })
-      if ($obsoletes) {
-        foreach ($var_Name in $obsoletes) {
-          Write-Verbose "🔵    [Refresh] Cleanning Env:Variable $var_Name in $target scope."
-          $([scriptblock]::Create("[System.Environment]::SetEnvironmentVariable('$var_Name', `$null, [System.EnvironmentVariableTarget]::$target)")).Invoke();
-          if ($null -ne ${env:var_Name}) { Remove-Item -LiteralPath "${env:var_Name}" -Force -ErrorAction SilentlyContinue | Out-Null }
+      Set-Variable DebugPreference -Scope Global -Value $DbP2;
+      [int]$c = 0; [int]$t = $this::targets.Count; [Console]::WriteLine()
+      foreach ($target in [vars]::targets) {
+        Write-Verbose "🔵 [Refresh]  $c/$t Cleanning obsolete variables in [$target] scope ..."
+        $obsoletes = $this.$target.Keys.Where({ $this.ToString() -notcontains $_ })
+        if ($obsoletes) {
+          foreach ($var_Name in $obsoletes) {
+            Write-Verbose "🔵    [Refresh] Cleanning Env:Variable $var_Name in $target scope."
+            $([scriptblock]::Create("[System.Environment]::SetEnvironmentVariable('$var_Name', `$null, [System.EnvironmentVariableTarget]::$target)")).Invoke();
+            if ($null -ne ${env:var_Name}) { Remove-Item -LiteralPath "${env:var_Name}" -Force -ErrorAction SilentlyContinue | Out-Null }
+          }
+        } else {
+          Write-Verbose "🔵 [Refresh]      No obsolete variables were found.  ✅"
         }
-      } else {
-        Write-Verbose "🔵 [Refresh]      No obsolete variables were found.  ✅"
+        $this.$target.Keys.ForEach({ Set-Item -Path "Env:$_" -Value $this.$target[$_] })
+        $c++; [Console]::WriteLine()
       }
-      $this.$target.Keys.ForEach({ Set-Item -Path "Env:$_" -Value $this.$target[$_] })
-      $c++; [Console]::WriteLine()
     }
   }
   hidden [string[]] getAllValues([string]$Name) {
@@ -491,7 +476,7 @@ class dotEnv {
   static [void] SetEnvironmentVariable([string]$Name, [string]$Value, [System.EnvironmentVariableTarget]$Scope) {
     if ($Name.ToUpper().Equals("PATH") -and [xcrypt]::Get_Host_Os() -eq "Windows") {
       $hive_is_connected = $false
-      ([Microsoft.Win32.RegistryKey]$win32RegistryKey, [string]$registryKey) = switch ($Scope) {
+      ([RegistryKey]$win32RegistryKey, [string]$registryKey) = switch ($Scope) {
         "Machine" {
           $dkey = "HKLM\DEFAULT"; $ntFl = "C:\Users\Default\NTUSER.DAT"
           if (!(Test-Path $dkey.Replace("\", ":"))) {
@@ -499,37 +484,37 @@ class dotEnv {
             $r = reg load $dkey $ntFl *>&1
             if (!$?) { throw "Failed to load hive: $r" }
           }; $hive_is_connected = $true; $k = 'DEFAULT\Environment'
-          [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($k), $k
+          [Registry]::LocalMachine.OpenSubKey($k), $k
           break;
         }
         "User" {
           $k = 'Environment'
-          [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($k), $k; break;
+          [Registry]::CurrentUser.OpenSubKey($k), $k; break;
         }
         Default {
           $k = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment\'
-          [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($k), $k
+          [Registry]::LocalMachine.OpenSubKey($k), $k
         }
       }
       # "Write ACCESS CHECKING"..
-      if ($null -eq $win32RegistryKey.OpenSubKey($registryKey, [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree)) {
+      if ($null -eq $win32RegistryKey.OpenSubKey($registryKey, [RegistryKeyPermissionCheck]::ReadWriteSubTree)) {
         Write-Warning "[!]  No RegistryKeyReadWrite Permission."
       }
       try {
         $registryType = switch ($true) {
           $win32RegistryKey.GetValueNames().Contains($Name) { $win32RegistryKey.GetValueKind($Name); break }
-          $Name.ToUpper().Equals("PATH") { [Microsoft.Win32.RegistryValueKind]::ExpandString; break }
-          Default { [Microsoft.Win32.RegistryValueKind]::String }
+          $Name.ToUpper().Equals("PATH") { [RegistryValueKind]::ExpandString; break }
+          Default { [RegistryValueKind]::String }
         }
       } catch {
         throw "Error. Could not find reg type for $Name`n" + $_
       }
       $CurrentPath = & {
         # idk, probably scope issues
-        try { [System.Environment]::GetEnvironmentVariable('PATH', "$Scope") } catch { $win32RegistryKey.GetValue('PATH', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames).TrimEnd([System.IO.Path]::PathSeparator) }
+        try { [System.Environment]::GetEnvironmentVariable('PATH', "$Scope") } catch { $win32RegistryKey.GetValue('PATH', '', [RegistryValueOptions]::DoNotExpandEnvironmentNames).TrimEnd([System.IO.Path]::PathSeparator) }
       }
       $NewPathValue = if (($null -eq $Value) -or ($Value -eq '')) { $CurrentPath }else { [string]::Concat($value, [System.IO.Path]::PathSeparator, $CurrentPath) }
-      if ($NewPathValue.Contains('%')) { $registryType = [Microsoft.Win32.RegistryValueKind]::ExpandString }
+      if ($NewPathValue.Contains('%')) { $registryType = [RegistryValueKind]::ExpandString }
       [void]$win32RegistryKey.SetValue('PATH', $NewPathValue, $registryType)
       $win32RegistryKey.Handle.Close()
       Write-Verbose "Added PATH:Variable `"$Value`"."
@@ -546,7 +531,8 @@ class dotEnv {
       $Fl = New-TemporaryFile; $rF = [System.IO.Path]::ChangeExtension($Fl.FullName, 'ps1'); [System.IO.File]::Move($Fl.FullName, $rF);
       $TempFile = Get-Item $rf
       $rfScript = [scriptblock]::Create({
-          Import-Module dotEnv; Update-SessionEnv
+          Import-Module dotEnv;
+          Update-SessionEnv
         }
       )
       $rfScript.ToString() | Set-Content -Path $TempFile
