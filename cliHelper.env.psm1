@@ -286,7 +286,7 @@ class dotEnv : PsModuleBase {
   static $X509CertHelper
   static [vars] $vars = [vars]::new()
   static [EnvCfg] $config = [EnvCfg]::new(@{ User = [UserConfig]::new(); Project = [ProjectConfig]::new() })
-  Static [IO.DirectoryInfo] $DataPath = [dotEnv]::Get_dataPath('dotEnv', 'Data')
+  Static [IO.DirectoryInfo] $DataPath = [dotEnv]::GetdataPath('dotEnv', 'Data')
   static hidden [string]$VarName_Suffix = [dotEnv].GUID.ToString().Replace('-', '_');
   static [bool] $useDebug = (Get-Variable DebugPreference -ValueOnly) -eq 'Continue'
   hidden [System.Security.Cryptography.X509Certificates.X509Certificate2] $Cert
