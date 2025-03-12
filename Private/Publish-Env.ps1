@@ -8,7 +8,7 @@
   [CmdletBinding()]
   param()
   process {
-    if ([xcrypt]::Get_Host_Os() -eq "Windows") {
+    if ([dotEnv]::GetHostOs() -eq "Windows") {
       $IsnmLoaded = [bool]("win32.nativemethods" -as [type])
       $IswxLoaded = [bool]("Win32API.Explorer" -as [type])
       if (!$IsnmLoaded -or !$IswxLoaded) { Write-Verbose "🔵 ⏳ Loading required namespaces ..."; [Console]::WriteLine() }
