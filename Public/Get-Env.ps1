@@ -38,7 +38,7 @@
 
     [Parameter(Mandatory = $false, Position = 1, ParameterSetName = 'file')]
     [ValidateScript({
-        if (![IO.File]::Exists(($_ | xcrypt GetUnResolvedPath))) {
+        if (![IO.File]::Exists(($_ | dotEnv GetUnResolvedPath))) {
           throw [System.IO.FileNotFoundException]::new("Please path to existing file", $_)
         } else {
           $true
@@ -59,7 +59,7 @@
 
   begin {
     $PsCmdlet.MyInvocation.BoundParameters.GetEnumerator() | ForEach-Object { Set-Variable -Name $_.Key -Value $_.Value -ea 'SilentlyContinue' }
-    $results = @(); $File = [IO.FileInfo]::new(($Path | xcrypt GetUnResolvedPath))
+    $results = @(); $File = [IO.FileInfo]::new(($Path | dotEnv GetUnResolvedPath))
   }
 
   Process {
