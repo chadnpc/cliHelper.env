@@ -3,7 +3,7 @@ using namespace System.IO
 using namespace Microsoft.Win32
 using namespace System.Management.Automation.Language
 
-#Requires -Modules clihelper.xcrypt
+#Requires -Modules PsModuleBase, clihelper.xcrypt
 #region    Classes
 
 enum ctxOption {
@@ -282,11 +282,11 @@ class vars {
 
 # .SYNOPSIS
 #  Module main class
-class dotEnv {
+class dotEnv : PsModuleBase {
   static $X509CertHelper
   static [vars] $vars = [vars]::new()
   static [EnvCfg] $config = [EnvCfg]::new(@{ User = [UserConfig]::new(); Project = [ProjectConfig]::new() })
-  Static [IO.DirectoryInfo] $DataPath = [xcrypt]::Get_dataPath('dotEnv', 'Data')
+  Static [IO.DirectoryInfo] $DataPath = [dotEnv]::Get_dataPath('dotEnv', 'Data')
   static hidden [string]$VarName_Suffix = [dotEnv].GUID.ToString().Replace('-', '_');
   static [bool] $useDebug = (Get-Variable DebugPreference -ValueOnly) -eq 'Continue'
   hidden [System.Security.Cryptography.X509Certificates.X509Certificate2] $Cert
@@ -436,7 +436,7 @@ class dotEnv {
   static [void] refreshEnv() { [dotEnv]::refreshEnv([ctxOption]::None) }
   static [void] refreshEnv([ctxOption]$ctxOption) {
     try {
-      $hostOS = [xcrypt]::Get_Host_Os(); $IsWinEnv = $hostOS -eq "Windows";
+      $hostOS = [dotEnv]::GetHostOs(); $IsWinEnv = $hostOS -eq "Windows";
       if ($hostOS -eq "Windows" -and ![dotEnv]::IsAdmin()) {
         Write-Warning "   : [!]  It seems You're not Admin [!] "
         return
@@ -474,7 +474,7 @@ class dotEnv {
     }
   }
   static [void] SetEnvironmentVariable([string]$Name, [string]$Value, [System.EnvironmentVariableTarget]$Scope) {
-    if ($Name.ToUpper().Equals("PATH") -and [xcrypt]::Get_Host_Os() -eq "Windows") {
+    if ($Name.ToUpper().Equals("PATH") -and [dotEnv]::GetHostOs() -eq "Windows") {
       $hive_is_connected = $false
       ([RegistryKey]$win32RegistryKey, [string]$registryKey) = switch ($Scope) {
         "Machine" {
@@ -612,7 +612,7 @@ class dotEnv {
     return [dotEnv]::X509CertHelper
   }
   static [bool] IsAdmin() {
-    $hostOs = [xcrypt]::Get_Host_Os()
+    $hostOs = [dotEnv]::GetHostOs()
     $isAdmn = switch ($hostOS) {
       "Windows" { (New-Object Security.Principal.WindowsPrincipal $([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator); break }
       "Linux" { (& id -u) -eq 0; break }
