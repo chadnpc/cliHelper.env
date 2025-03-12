@@ -15,7 +15,7 @@ function Get-EnvFile {
       if ($null -eq [dotenv].EnvFile) { [dotenv]::SetEnvFile() }
       $Path = [dotenv].EnvFile
     }
-    $p = Get-Item ($Path | xcrypt GetUnResolvedPath) -Force -ea Ignore
+    $p = Get-Item ($Path | dotEnv GetUnResolvedPath) -Force -ea Ignore
     if (!$p.Exists) {
       Write-Error "File not found: $Path"
     }
