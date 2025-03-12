@@ -11,7 +11,7 @@
   param (
     [Parameter(Mandatory = $false, Position = 0, ParameterSetName = 'path')]
     [ValidateScript({
-        if (![IO.File]::Exists(($_ | xcrypt GetUnResolvedPath))) {
+        if (![IO.File]::Exists(($_ | dotEnv GetUnResolvedPath))) {
           throw [System.IO.FileNotFoundException]::new("Please path to existing file", $_)
         } else {
           $true
