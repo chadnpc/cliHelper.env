@@ -34,7 +34,8 @@
     '<FunctionsToExport>'
   )
   RequiredModules       = @(
-    'clihelper.xcrypt'
+    'clihelper.xcrypt',
+    'PsModuleBase'
   )
   CmdletsToExport       = '*'
   VariablesToExport     = '*'
