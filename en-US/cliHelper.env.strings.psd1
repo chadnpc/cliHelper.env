@@ -1,6 +1,6 @@
 ﻿@{
   ModuleName    = 'cliHelper.env'
-  ModuleVersion = [Version]'0.1.4'
+  ModuleVersion = [Version]'0.1.5'
   ReleaseNotes  = @"
 # Changelog`n`n
 
