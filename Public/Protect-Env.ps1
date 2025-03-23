@@ -23,7 +23,7 @@
     # The .env or .config path
     [Parameter(Mandatory = $true, Position = 0)]
     [ValidateScript({
-        if (![IO.File]::Exists(($_ | dotEnv GetUnResolvedPath))) {
+        if (![IO.File]::Exists(([dotEnv]::GetUnResolvedPath($_)))) {
           throw [System.IO.FileNotFoundException]::new("Please path to existing file", $_)
         } else {
           $true
@@ -45,7 +45,7 @@
   )
 
   begin {
-    $File = [IO.FileInfo]::new(($Path | dotEnv GetUnResolvedPath))
+    $File = [IO.FileInfo]::new(([dotEnv]::GetUnResolvedPath($Path)))
     $pass = ($PSCmdlet.parameterSetName -eq 'withPasswordStr') ? $($Passw0rdStr | xconvert ToSecureString) : $Password
   }
 
