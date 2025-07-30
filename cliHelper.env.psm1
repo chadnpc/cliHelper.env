@@ -186,7 +186,7 @@ class UserConfig : EnvCfg {
     [string]$CertPath = switch ($true) {
       $Is_Unix_Os { '/etc/ssl/private/'; break }
       $Is_Windows { [IO.Path]::Combine($env:CommonProgramFiles, 'SSL', 'Private'); break }
-      Default { $PSScriptRoot }
+      default { $PSScriptRoot }
     }
     $this.cert = New-Object cert -Property @{
       Public  = [IO.Path]::Combine($CertPath, "$($this.UserName).cert.pem")
@@ -237,7 +237,7 @@ class vars {
               [Environment]::SetEnvironmentVariable($key, [string]::Join($this.p, ($psm | Select-Object -Unique)), $target)
               break;
             }
-            Default {
+            default {
               [Environment]::SetEnvironmentVariable($key, $value, $target)
             }
           }
@@ -286,7 +286,7 @@ class dotEnv : PsModuleBase {
   static $X509CertHelper
   static [vars] $vars = [vars]::new()
   static [EnvCfg] $config = [EnvCfg]::new(@{ User = [UserConfig]::new(); Project = [ProjectConfig]::new() })
-  Static [IO.DirectoryInfo] $DataPath = [dotEnv]::GetdataPath('dotEnv', 'Data')
+  static [IO.DirectoryInfo] $DataPath = [dotEnv]::GetdataPath('dotEnv', 'Data')
   static hidden [string]$VarName_Suffix = [dotEnv].GUID.ToString().Replace('-', '_');
   static [bool] $useDebug = (Get-Variable DebugPreference -ValueOnly) -eq 'Continue'
   hidden [System.Security.Cryptography.X509Certificates.X509Certificate2] $Cert
@@ -312,10 +312,10 @@ class dotEnv : PsModuleBase {
         continue
       }
       ($m, $d ) = switch -Wildcard ($line) {
-        "*:=*" { "Prefix", ($line -split ":=", 2); Break }
-        "*=:*" { "Suffix", ($line -split "=:", 2); Break }
-        "*=*" { "Assign", ($line -split "=", 2); Break }
-        Default {
+        "*:=*" { "Prefix", ($line -split ":=", 2); break }
+        "*=:*" { "Suffix", ($line -split "=:", 2); break }
+        "*=*" { "Assign", ($line -split "=", 2); break }
+        default {
           throw 'Unable to find Key value pair in line'
         }
       }
@@ -369,7 +369,7 @@ class dotEnv : PsModuleBase {
           $item.value = "{1};{0}" -f $item.value, [System.Environment]::GetEnvironmentVariable($item.Name)
           [Environment]::SetEnvironmentVariable($item.Name, $item.value, "Process") | Out-Null
         }
-        Default {
+        default {
           throw [System.IO.InvalidDataException]::new()
         }
       }
@@ -491,7 +491,7 @@ class dotEnv : PsModuleBase {
           $k = 'Environment'
           [Registry]::CurrentUser.OpenSubKey($k), $k; break;
         }
-        Default {
+        default {
           $k = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment\'
           [Registry]::LocalMachine.OpenSubKey($k), $k
         }
@@ -504,7 +504,7 @@ class dotEnv : PsModuleBase {
         $registryType = switch ($true) {
           $win32RegistryKey.GetValueNames().Contains($Name) { $win32RegistryKey.GetValueKind($Name); break }
           $Name.ToUpper().Equals("PATH") { [RegistryValueKind]::ExpandString; break }
-          Default { [RegistryValueKind]::String }
+          default { [RegistryValueKind]::String }
         }
       } catch {
         throw "Error. Could not find reg type for $Name`n" + $_
@@ -617,7 +617,7 @@ class dotEnv : PsModuleBase {
       "Windows" { (New-Object Security.Principal.WindowsPrincipal $([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator); break }
       "Linux" { (& id -u) -eq 0; break }
       "MacOsx" { Write-Warning "MacOsx !! idk how to solve this one! (wip)"; $false; break }
-      Default {
+      default {
         throw "UNSUPPORTED_OS"
       }
     }
@@ -659,10 +659,10 @@ $scripts += Get-ChildItem "$PSScriptRoot/Private" -Filter "*.ps1" -Recurse -Erro
 $scripts += $Public
 
 foreach ($file in $scripts) {
-  Try {
+  try {
     if ([string]::IsNullOrWhiteSpace($file.fullname)) { continue }
     . "$($file.fullname)"
-  } Catch {
+  } catch {
     Write-Warning "Failed to import function $($file.BaseName): $_"
     $host.UI.WriteErrorLine($_)
   }
