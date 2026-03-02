@@ -10,7 +10,7 @@
   # .PARAMETER Scope
   #   The environment variable target scope. This is `Process`, `User`, or `Machine`.
   # .EXAMPLE
-  #   Get-Env *User_Id* -source ./.env
+  #   Get-Env *User_Id* -source .env
   #   > Name                                       Value
   #     ----                                       -----
   #     NEXT_PUBLIC_MTN_API_COLLECTION_USER_ID     lorem331acb
@@ -44,7 +44,7 @@
           $true
         }
       }
-    )][Alias('File')]
+    )][Alias('File', 'Source', 'From')]
     [string]$Path,
 
     [Parameter(Mandatory = $false, Position = 1, ParameterSetName = 'session')]
@@ -62,7 +62,7 @@
     $results = @(); $File = [IO.FileInfo]::new(([dotEnv]::GetUnResolvedPath($Path)))
   }
 
-  Process {
+  process {
     $fromFile = $PSCmdlet.ParameterSetName -eq "file"
     $vars = $fromFile ? (Get-Enties $File) : (Get-Enties)
     if ($PSBoundParameters.ContainsKey('scope')) { $vars = $vars.$scope }
