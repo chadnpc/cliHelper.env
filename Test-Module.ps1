@@ -49,7 +49,7 @@ process {
   Get-Module $ModuleName | Remove-Module
   Write-Host "[+] Testing Module: '$($BuildOutDir.FullName)'" -ForegroundColor Green
   Test-ModuleManifest -Path $manifestFile.FullName -ErrorAction Stop -Verbose:$false
-  $TestResults = Invoke-Pester -Path $TestsPath -OutputFormat NUnitXml -OutputFile "$TestsPath\results.xml" -PassThru
+  $TestResults = Invoke-Pester -OutputFormat NUnitXml -OutputFile ([IO.Path]::Combine("$TestsPath", "results.xml")) -PassThru
 }
 end {
   return $TestResults
