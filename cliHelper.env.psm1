@@ -625,12 +625,423 @@ class dotEnv : PsModuleBase {
   }
 }
 
+#region Env-graph core types
+
+class EnvResolver {
+  [string]$Name
+  [EnvDataSource]$DataSource
+  [EnvResolver[]]$ArrayArguments
+  [hashtable]$NamedArguments
+  [string[]]$DependencyKeys
+
+  EnvResolver() {
+    $this.ArrayArguments = @()
+    $this.NamedArguments = @{}
+    $this.DependencyKeys = @()
+  }
+
+  [void] Process() {
+  }
+
+  [object] Resolve() {
+    return $null
+  }
+}
+
+class StaticValueResolver : EnvResolver {
+  [object]$Value
+
+  StaticValueResolver([object]$Value) : base() {
+    $this.Name = 'static'
+    $this.Value = $Value
+  }
+
+  [object] Resolve() {
+    return $this.Value
+  }
+}
+
+class EnvDecoratorInstance {
+  [ValidateNotNullOrWhiteSpace()][string]$Name
+  [EnvDataSource]$DataSource
+  [EnvResolver]$ValueResolver
+  [System.Collections.Generic.List[System.Exception]]$SchemaErrors
+
+  EnvDecoratorInstance() {
+    $this.SchemaErrors = [System.Collections.Generic.List[System.Exception]]::new()
+  }
+
+  [void] Process() {
+  }
+
+  [object] Resolve() {
+    if ($null -ne $this.ValueResolver) {
+      return $this.ValueResolver.Resolve()
+    }
+    return $null
+  }
+}
+
+class EnvRootDecorator : EnvDecoratorInstance {
+  [int]$LineNumber
+}
+
+class EnvItemDecorator : EnvDecoratorInstance {
+  [ValidateNotNullOrWhiteSpace()][string]$ItemKey
+}
+
+class EnvConfigItemDef {
+  [string]$Description
+  [object]$RawValue
+  [dtActn]$Action
+  [System.Collections.Generic.List[EnvItemDecorator]]$ItemDecorators
+  [EnvResolver]$ValueResolver
+
+  EnvConfigItemDef() {
+    $this.Action = [dtActn]::Assign
+    $this.ItemDecorators = [System.Collections.Generic.List[EnvItemDecorator]]::new()
+  }
+}
+
+class EnvConfigItem {
+  [ValidateNotNullOrWhiteSpace()][string]$Key
+  [EnvGraph]$Graph
+  [System.Collections.Generic.List[EnvConfigItemDef]]$Definitions
+  [EnvItemDecorator[]]$EffectiveDecorators
+  [string[]]$DependencyKeys
+  [bool]$IsRequired = $true
+  [bool]$IsSensitive = $true
+  [bool]$IsValid = $false
+  [object]$ResolvedRawValue
+  [object]$ResolvedValue
+  [System.Collections.Generic.List[System.Exception]]$Errors
+
+  EnvConfigItem([EnvGraph]$Graph, [string]$Key) {
+    $this.Graph = $Graph
+    $this.Key = $Key
+    $this.Definitions = [System.Collections.Generic.List[EnvConfigItemDef]]::new()
+    $this.DependencyKeys = @()
+    $this.Errors = [System.Collections.Generic.List[System.Exception]]::new()
+    $this.EffectiveDecorators = @()
+  }
+
+  [void] AddDefinition([EnvConfigItemDef]$Definition) {
+    if ($null -ne $Definition) {
+      $this.Definitions.Add($Definition)
+    }
+  }
+
+  [void] Process() {
+  }
+
+  [void] EarlyResolve() {
+  }
+
+  [void] Resolve([bool]$Reset) {
+  }
+}
+
+class EnvDataSource {
+  [EnvGraph]$Graph
+  [EnvDataSource]$Parent
+  [System.Collections.Generic.List[EnvDataSource]]$Children
+  [string]$Type = 'values'
+  [string]$Label
+  [bool]$Disabled = $false
+  [string]$ApplyForEnv
+  [System.Collections.Generic.List[EnvRootDecorator]]$RootDecorators
+  [hashtable]$ConfigItemDefs
+
+  EnvDataSource() {
+    $this.Children = [System.Collections.Generic.List[EnvDataSource]]::new()
+    $this.RootDecorators = [System.Collections.Generic.List[EnvRootDecorator]]::new()
+    $this.ConfigItemDefs = @{}
+  }
+
+  [void] FinishInit() {
+  }
+
+  [EnvRootDecorator[]] GetRootDecorators() {
+    return $this.RootDecorators.ToArray()
+  }
+
+  [EnvRootDecorator] GetRootDecorator([string]$Name) {
+    return $this.RootDecorators | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
+  }
+
+  [hashtable] GetConfigItemDefs() {
+    return $this.ConfigItemDefs
+  }
+
+  [string] ResolveCurrentEnv() {
+    if ($null -ne $this.Graph -and -not [string]::IsNullOrWhiteSpace($this.Graph.EnvFlagFallback)) {
+      return $this.Graph.EnvFlagFallback
+    }
+    return $null
+  }
+}
+
+class DotEnvParseResult {
+  [System.Collections.Generic.List[EnvRootDecorator]]$RootDecorators
+  [System.Collections.Generic.List[ParsedEnvItem]]$Items
+
+  DotEnvParseResult() {
+    $this.RootDecorators = [System.Collections.Generic.List[EnvRootDecorator]]::new()
+    $this.Items = [System.Collections.Generic.List[ParsedEnvItem]]::new()
+  }
+}
+
+class ParsedEnvItem {
+  [ValidateNotNullOrWhiteSpace()][string]$Key
+  [string]$RawValue
+  [System.Collections.Generic.List[EnvRootDecorator]]$Decorators
+  [int]$LineNumber
+  [dtActn]$Action
+
+  ParsedEnvItem() {
+    $this.Decorators = [System.Collections.Generic.List[EnvRootDecorator]]::new()
+    $this.Action = [dtActn]::Assign
+  }
+}
+
+class DotEnvParser {
+  static [DotEnvParseResult] ParseFile([string]$Path) {
+    $result = [DotEnvParseResult]::new()
+    if (-not (Test-Path -LiteralPath $Path)) {
+      return $result
+    }
+
+    $lines = [IO.File]::ReadAllLines($Path)
+    [bool]$seenItem = $false
+    $pendingItemDecorators = [System.Collections.Generic.List[EnvRootDecorator]]::new()
+    for ($i = 0; $i -lt $lines.Length; $i++) {
+      $line = $lines[$i]
+      if ([string]::IsNullOrWhiteSpace($line)) {
+        continue
+      }
+      if ($line.TrimStart().StartsWith('#')) {
+        $trim = $line.Trim()
+        if ($trim.StartsWith('# @')) {
+          $decText = $trim.Substring(3).Trim()
+          $parts = $decText.Split('=', 2)
+          $name = $parts[0].Trim()
+          $rawArgs = if ($parts.Count -gt 1) { $parts[1].Trim() } else { '' }
+          $dec = [EnvRootDecorator]::new()
+          $dec.Name = $name
+          $dec.DataSource = $null
+          $dec.LineNumber = $i + 1
+          if (-not $seenItem) {
+            $result.RootDecorators.Add($dec)
+          } else {
+            $pendingItemDecorators.Add($dec)
+          }
+        }
+        continue
+      }
+
+      $match = [regex]::Match($line, '^\s*([^#=\s]+)\s*(?:(:=)|(=:)|=)?\s*(.*)$')
+      if ($match.Success) {
+        $parsed = [ParsedEnvItem]::new()
+        $parsed.Key = $match.Groups[1].Value.Trim()
+        $parsed.RawValue = $match.Groups[4].Value.Trim()
+        $parsed.LineNumber = $i + 1
+        if ($match.Groups[2].Success) {
+          $parsed.Action = [dtActn]::Prefix
+        } elseif ($match.Groups[3].Success) {
+          $parsed.Action = [dtActn]::Suffix
+        } else {
+          $parsed.Action = [dtActn]::Assign
+        }
+        foreach ($d in $pendingItemDecorators) {
+          $parsed.Decorators.Add($d)
+        }
+        $pendingItemDecorators.Clear()
+        $result.Items.Add($parsed)
+        $seenItem = $true
+        continue
+      }
+    }
+
+    return $result
+  }
+}
+
+class DotEnvFileDataSource : EnvDataSource {
+  [IO.FileInfo]$File
+
+  DotEnvFileDataSource([string]$Path) : base() {
+    $this.File = [IO.FileInfo]::new($Path)
+    $this.Label = $this.File.FullName
+    $this.Type = 'file'
+  }
+
+  [void] FinishInit() {
+    if (-not $this.File -or -not $this.File.Exists) {
+      return
+    }
+    $parseResult = [DotEnvParser]::ParseFile($this.File.FullName)
+    foreach ($rootDec in $parseResult.RootDecorators) {
+      $rootDec.DataSource = $this
+      $this.RootDecorators.Add($rootDec)
+    }
+    foreach ($item in $parseResult.Items) {
+      $def = [EnvConfigItemDef]::new()
+      $def.RawValue = $item.RawValue
+       $def.Action = $item.Action
+      foreach ($dec in $item.Decorators) {
+        $decorator = [EnvItemDecorator]::new()
+        $decorator.Name = $dec.Name
+        $decorator.DataSource = $this
+        $def.ItemDecorators.Add($decorator)
+      }
+      $this.ConfigItemDefs[$item.Key] = $def
+    }
+  }
+}
+
+class DirectoryDataSource : EnvDataSource {
+  [IO.DirectoryInfo]$BasePath
+  [DotEnvFileDataSource]$SchemaSource
+
+  DirectoryDataSource([IO.DirectoryInfo]$BasePath) : base() {
+    $this.BasePath = $BasePath
+    $this.Label = $BasePath.FullName
+    $this.Type = 'directory'
+  }
+
+  [void] FinishInit() {
+    if (-not $this.BasePath -or -not $this.BasePath.Exists) {
+      return
+    }
+
+    $schemaPath = [IO.Path]::Combine($this.BasePath.FullName, '.env.schema')
+    if (Test-Path -LiteralPath $schemaPath) {
+      $schema = [DotEnvFileDataSource]::new($schemaPath)
+      $schema.Graph = $this.Graph
+      $schema.Parent = $this
+      $schema.FinishInit()
+      $this.Children.Add($schema)
+      $this.SchemaSource = $schema
+    }
+
+    $envPath = [IO.Path]::Combine($this.BasePath.FullName, '.env')
+    if (Test-Path -LiteralPath $envPath) {
+      $values = [DotEnvFileDataSource]::new($envPath)
+      $values.Graph = $this.Graph
+      $values.Parent = $this
+      $values.FinishInit()
+      $this.Children.Add($values)
+    }
+  }
+}
+
+class EnvGraph {
+  [string]$BasePath
+  [EnvDataSource]$RootDataSource
+  [hashtable]$ConfigItems
+  [hashtable]$OverrideValues
+  [string]$EnvFlagKey
+  [string]$EnvFlagFallback
+
+  EnvGraph() {
+    $this.ConfigItems = @{}
+    $this.OverrideValues = @{}
+  }
+
+  static [EnvGraph] Load([string]$BasePath, [string]$EntryPath) {
+    $graph = [EnvGraph]::new()
+    if ([string]::IsNullOrWhiteSpace($BasePath)) {
+      $graph.BasePath = (Get-Location).Path
+    } else {
+      $graph.BasePath = (Resolve-Path -LiteralPath $BasePath).Path
+    }
+
+    if ([string]::IsNullOrWhiteSpace($EntryPath)) {
+      $dirInfo = [IO.DirectoryInfo]::new($graph.BasePath)
+      $root = [DirectoryDataSource]::new($dirInfo)
+      $root.Graph = $graph
+      $graph.RootDataSource = $root
+      $root.FinishInit()
+    } else {
+      $full = if ([IO.Path]::IsPathRooted($EntryPath)) {
+        $EntryPath
+      } else {
+        [IO.Path]::Combine($graph.BasePath, $EntryPath)
+      }
+      $item = Get-Item -LiteralPath $full -ErrorAction Ignore
+      if ($item -and $item.PSIsContainer) {
+        $dir = [DirectoryDataSource]::new([IO.DirectoryInfo]::new($item.FullName))
+        $dir.Graph = $graph
+        $graph.RootDataSource = $dir
+        $dir.FinishInit()
+      } else {
+        $fileSource = [DotEnvFileDataSource]::new($full)
+        $fileSource.Graph = $graph
+        $graph.RootDataSource = $fileSource
+        $fileSource.FinishInit()
+      }
+    }
+
+    foreach ($key in $graph.RootDataSource.ConfigItemDefs.Keys) {
+      $itemDef = $graph.RootDataSource.ConfigItemDefs[$key]
+      $item = [EnvConfigItem]::new($graph, $key)
+      $item.AddDefinition($itemDef)
+      $graph.ConfigItems[$key] = $item
+    }
+
+    return $graph
+  }
+
+  [void] RegisterConfigItem([EnvConfigItem]$Item) {
+    if ($null -ne $Item -and -not [string]::IsNullOrWhiteSpace($Item.Key)) {
+      $this.ConfigItems[$Item.Key] = $Item
+    }
+  }
+
+  [void] ResolveEnvValues([string[]]$Keys) {
+    if (-not $Keys -or $Keys.Count -eq 0) {
+      $Keys = $this.ConfigItems.Keys
+    }
+    foreach ($key in $Keys) {
+      $item = $this.ConfigItems[$key]
+      if ($null -ne $item) {
+        $item.Resolve($false)
+      }
+    }
+  }
+
+  [hashtable] GetResolvedEnv() {
+    $result = @{}
+    foreach ($key in $this.ConfigItems.Keys) {
+      $item = $this.ConfigItems[$key]
+      $result[$key] = $item.ResolvedValue
+    }
+    return $result
+  }
+}
+
+#endregion Env-graph core types
+
 #endregion Classes
 
 #region typeAccelerators
 # Types that will be available to users when they import the module.
 $typestoExport = @(
-  [dotEnv], [dotEntry]
+  [dotEnv],
+  [dotEntry],
+  [EnvGraph],
+  [EnvDataSource],
+  [DotEnvFileDataSource],
+  [DirectoryDataSource],
+  [EnvConfigItem],
+  [EnvConfigItemDef],
+  [EnvResolver],
+  [EnvRootDecorator],
+  [EnvItemDecorator],
+  [DotEnvParser],
+  [DotEnvParseResult],
+  [ParsedEnvItem],
+  [StaticValueResolver]
 )
 $TypeAcceleratorsClass = [PsObject].Assembly.GetType('System.Management.Automation.TypeAccelerators')
 foreach ($Type in $typestoExport) {
@@ -644,7 +1055,9 @@ foreach ($Type in $typestoExport) {
 }
 # Add type accelerators for every exportable type.
 foreach ($Type in $typestoExport) {
-  $TypeAcceleratorsClass::Add($Type.FullName, $Type)
+  if ($Type.FullName -notin $TypeAcceleratorsClass::Get.Keys) {
+    $TypeAcceleratorsClass::Add($Type.FullName, $Type)
+  }
 }
 # Remove type accelerators when the module is removed.
 $MyInvocation.MyCommand.ScriptBlock.Module.OnRemove = {
